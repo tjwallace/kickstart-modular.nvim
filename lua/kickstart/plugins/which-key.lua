@@ -29,6 +29,7 @@ return {
         { '<leader>w', group = '[W]orkspace' },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>g', group = '[G]it Hunk', mode = { 'n', 'v' } },
+        { '<leader>x', group = '[x] Touble' },
       }
     end,
   },
