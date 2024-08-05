@@ -56,4 +56,19 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   end,
 })
 
+if vim.g.neovide then
+  vim.keymap.set('n', '<D-s>', ':w<CR>', { desc = 'Save' })
+  vim.keymap.set('v', '<D-c>', '"+y', { desc = 'Copy' })
+  vim.keymap.set({ 'n', 'v', 's', 'x', 'o', 'i', 'l', 'c', 't', '!' }, '<D-v>', function()
+    vim.api.nvim_paste(vim.fn.getreg '+', true, -1) -- Paste
+  end, { desc = 'Paste', noremap = true, silent = true })
+
+  vim.keymap.set('n', '<D-w>', '<cmd>quit<CR>', { desc = 'Quit current buffer' })
+
+  -- Tabs (osx)
+  vim.keymap.set('n', '<D-t>', '<cmd>tabnew<CR>', { desc = 'Open new tab' })
+  vim.keymap.set('n', '<D-{>', '<cmd>tabp<CR>', { desc = 'Go to previous tab' })
+  vim.keymap.set('n', '<D-}>', '<cmd>tabn<CR>', { desc = 'Go to next tab' })
+end
+
 -- vim: ts=2 sts=2 sw=2 et
