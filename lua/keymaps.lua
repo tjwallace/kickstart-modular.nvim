@@ -35,6 +35,13 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 vim.keymap.set('n', '<leader>vs', '<C-w><C-v>', { desc = 'Vertical split' })
 vim.keymap.set('n', '<leader>hs', '<C-w><C-s>', { desc = 'Horizontal split' })
 
+-- Tabs
+vim.keymap.set('n', '<leader>to', '<cmd>tabnew<CR>', { desc = 'Open new tab' })
+vim.keymap.set('n', '<leader>tx', '<cmd>tabclose<CR>', { desc = 'Close current tab' })
+vim.keymap.set('n', '<leader>tn', '<cmd>tabn<CR>', { desc = 'Go to next tab' })
+vim.keymap.set('n', '<leader>tp', '<cmd>tabp<CR>', { desc = 'Go to previous tab' })
+vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current buffer in new tab' })
+
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
 
