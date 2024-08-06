@@ -42,6 +42,8 @@ vim.keymap.set('n', '<leader>tn', '<cmd>tabn<CR>', { desc = 'Go to next tab' })
 vim.keymap.set('n', '<leader>tp', '<cmd>tabp<CR>', { desc = 'Go to previous tab' })
 vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current buffer in new tab' })
 
+vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' })
+
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
 
