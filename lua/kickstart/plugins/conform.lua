@@ -43,11 +43,12 @@ return {
         -- languages here or re-enable it for the disabled ones.
         local disable_filetypes = { c = true, cpp = true }
         local lsp_format_opt
-        if disable_filetypes[vim.bo[bufnr].filetype] then
+        if disable_filetypes[filetype] then
           lsp_format_opt = 'never'
         else
           lsp_format_opt = 'fallback'
         end
+
         return {
           timeout_ms = 1000,
           lsp_format = lsp_format_opt,
@@ -62,6 +63,13 @@ return {
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      },
+      formatters = {
+        -- force rubocop to use bundler
+        rubocop = {
+          command = 'bundle',
+          prepend_args = { 'exec', 'rubocop' },
+        },
       },
     },
   },
