@@ -65,4 +65,6 @@ vim.opt.scrolloff = 10
 vim.opt.shiftwidth = 2
 vim.opt.tabstop = 2
 
+vim.o.guifont = 'Hack Nerd Font Mono:h13'
+
 -- vim: ts=2 sts=2 sw=2 et
