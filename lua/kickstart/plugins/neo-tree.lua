@@ -65,6 +65,9 @@ return {
           ['\\'] = 'close_window',
         },
       },
+      filtered_items = {
+        visible = true, -- show hidden files by default
+      },
     },
   },
 }
