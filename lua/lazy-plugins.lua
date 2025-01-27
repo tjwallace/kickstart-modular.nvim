@@ -84,6 +84,8 @@ require('lazy').setup({
   git = {
     throttle = {
       enabled = true,
+      rate = 5, -- 5 ops every 1 second
+      duration = 1000, -- ms
     },
   },
 })
