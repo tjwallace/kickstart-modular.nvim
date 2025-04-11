@@ -48,7 +48,20 @@ vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current bu
 
 vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' })
 
--- NOTE: Some terminals have coliding keymaps or are not able to send distinct keycodes
+-- Splits
+vim.keymap.set('n', '<leader>vs', '<C-w><C-v>', { desc = 'Vertical split' })
+vim.keymap.set('n', '<leader>hs', '<C-w><C-s>', { desc = 'Horizontal split' })
+
+-- Tabs
+vim.keymap.set('n', '<leader>to', '<cmd>tabnew<CR>', { desc = 'Open new tab' })
+vim.keymap.set('n', '<leader>tx', '<cmd>tabclose<CR>', { desc = 'Close current tab' })
+vim.keymap.set('n', '<leader>tn', '<cmd>tabn<CR>', { desc = 'Go to next tab' })
+vim.keymap.set('n', '<leader>tp', '<cmd>tabp<CR>', { desc = 'Go to previous tab' })
+vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current buffer in new tab' })
+
+vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' })
+
+-- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
 -- vim.keymap.set("n", "<C-S-j>", "<C-w>J", { desc = "Move window to the lower" })
