@@ -11,6 +11,6 @@ jobs:
     steps:
       - uses: tgymnich/fork-sync@v2.0.10
         with:
-          owner: dam9000
+          owner: tjwallace
           base: master
           head: master
