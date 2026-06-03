@@ -8,7 +8,7 @@ output root:
 
 * init.lua loader
 * one Lua file per core section (options, keymaps, pack, plugins)
-* each generated file includes its original section header at the top
+* by default, no section headers are emitted (use --section-headers to include them)
 
 Use --write to update files and --check to verify them.
 """
@@ -19,7 +19,7 @@ import argparse
 import difflib
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -30,6 +30,7 @@ class CliArgs:
     output_root: str
     write: bool
     check: bool
+    section_headers: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,36 +42,43 @@ class SectionHeader:
 SECTION_HEADER_RE = re.compile(r"^-- SECTION (?P<number>\d+): (?P<title>.+)$")
 SECTION_DESCRIPTION_RE = re.compile(r"^-- (?P<description>.+)$")
 SEPARATOR_LINE = "-- ============================================================"
+MODELINE = "-- vim: ts=2 sts=2 sw=2 et"
+# Full gh() comments from init.lua:
+#    "---Because most plugins are hosted on GitHub, you can use the helper",
+#    "---function to have less repetition in the following sections.",
+#    "---@param repo string",
+#    "---@return string",
 GH_HELPER = [
-    "---Because most plugins are hosted on GitHub, you can use the helper",
-    "---function to have less repetition in the following sections.",
-    "---@param repo string",
-    "---@return string",
     "local function gh(repo) return 'https://github.com/' .. repo end",
 ]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ModuleSpec:
     number: int
     path: Path
     module: str
     uses_gh: bool = False
+    split: bool = False
+    plugins: list[str] = field(default_factory=list)
 
 
 FILE_SPECS = [
     ModuleSpec(1, Path("lua/options.lua"), "options"),
     ModuleSpec(2, Path("lua/keymaps.lua"), "keymaps"),
     ModuleSpec(3, Path("lua/pack.lua"), "pack"),
-    ModuleSpec(4, Path("lua/kickstart/plugins/ui.lua"), "kickstart.plugins.ui", uses_gh=True),
-    ModuleSpec(5, Path("lua/kickstart/plugins/search.lua"), "kickstart.plugins.search", uses_gh=True),
-    ModuleSpec(6, Path("lua/kickstart/plugins/lsp.lua"), "kickstart.plugins.lsp", uses_gh=True),
-    ModuleSpec(7, Path("lua/kickstart/plugins/formatting.lua"), "kickstart.plugins.formatting", uses_gh=True),
-    ModuleSpec(8, Path("lua/kickstart/plugins/completion.lua"), "kickstart.plugins.completion", uses_gh=True),
+    ModuleSpec(4, Path("lua/kickstart/plugins/ui.lua"), "kickstart.plugins.ui",
+               uses_gh=True, split=True),
+    ModuleSpec(5, Path("lua/kickstart/plugins/telescope.lua"), "kickstart.plugins.telescope", uses_gh=True),
+    ModuleSpec(6, Path("lua/kickstart/plugins/lspconfig.lua"), "kickstart.plugins.lspconfig", uses_gh=True),
+    ModuleSpec(7, Path("lua/kickstart/plugins/conform.lua"), "kickstart.plugins.conform", uses_gh=True),
+    ModuleSpec(8, Path("lua/kickstart/plugins/blink-cmp.lua"), "kickstart.plugins.blink-cmp", uses_gh=True),
     ModuleSpec(9, Path("lua/kickstart/plugins/treesitter.lua"), "kickstart.plugins.treesitter", uses_gh=True),
 ]
 
 ALL_SECTION_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+ARGS: CliArgs
 
 
 def fail(message: str) -> NoReturn:
@@ -191,9 +199,171 @@ def build_section_module(lines: list[str], uses_gh: bool) -> list[str]:
     return body
 
 
+PLUGIN_NAME_RE = re.compile(r"gh\s*['\"]([^'\"]+)['\"]")
+
+
+def extract_plugin_name(line: str) -> str:
+    """Extract plugin name from a vim.pack.add line.
+
+    From 'vim.pack.add { gh \'folke/todo-comments.nvim\' }' → 'todo-comments'
+    From 'if ... then vim.pack.add { gh \'nvim-tree/nvim-web-devicons\' } end' → 'web-devicons'
+    """
+    match = PLUGIN_NAME_RE.search(line)
+    if not match:
+        fail(f"could not extract plugin name from: {line}")
+    repo = match.group(1)  # e.g. 'folke/todo-comments.nvim'
+    name = repo.rsplit('/', 1)[-1]  # strip owner/ → 'todo-comments.nvim'
+    if name.endswith('.nvim'):
+        name = name[:-5]  # strip .nvim suffix
+    return name
+
+
+def extract_setup_content(lines: list[str]) -> str | None:
+    """Find 'setup {' in lines and return the inner content up to the matching '^}' line.
+
+    Works because stylua keeps nested braces indented, so the closing brace
+    of the outermost setup block is always at column 0 after dedenting.
+    """
+    for i, line in enumerate(lines):
+        if '.setup {' in line or '.setup{' in line:
+            content: list[str] = []
+            for j in range(i + 1, len(lines)):
+                if lines[j] == '}':
+                    return '\n'.join(content)
+                content.append(lines[j])
+    return None
+
+
+def _merge_with_extra(plugin_name: str, content: list[str], source_root: Path) -> list[str]:
+    """If a plugin has an extra config file with a setup block, merge them.
+
+    The extra file's setup content is appended to the init.lua version.
+    A trailing comma is added to the first block if missing (styLua usually adds it).
+    """
+    extra_path = source_root / 'lua' / 'kickstart' / 'plugins' / f'{plugin_name}.lua'
+    if not extra_path.exists():
+        return content
+
+    init_setup = extract_setup_content(content)
+    extra_setup = extract_setup_content(read_lines(extra_path))
+
+    if not init_setup or not extra_setup:
+        return content
+
+    # Concatenate with comma safety
+    merged = init_setup.rstrip()
+    if not merged.endswith(','):
+        merged += ','
+    merged += '\n' + extra_setup
+
+    return replace_setup_block(content, merged)
+
+
+def replace_setup_block(content: list[str], merged_setup: str) -> list[str]:
+    """Replace the existing setup { ... } block in content with a merged version."""
+    result: list[str] = []
+    i = 0
+    while i < len(content):
+        line = content[i]
+        if '.setup {' in line or '.setup{' in line:
+            # Found the setup line — replace everything up to and including '^}'
+            result.append(line)
+            i += 1
+            while i < len(content) and content[i] != '}':
+                i += 1
+            # i is now at the '^}' line — skip it (we're replacing the whole block)
+            if i < len(content):
+                i += 1
+            # Insert merged setup content (already properly indented from sources), plus closing brace
+            for ml in merged_setup.split('\n'):
+                result.append(ml)
+            result.append('}')
+        else:
+            result.append(line)
+            i += 1
+    return result
+
+
+def split_section(section_lines: list[str], spec: ModuleSpec, source_root: Path) -> dict[Path, list[str]]:
+    """Split a section into individual plugin files.
+
+    Scans for vim.pack.add lines (not commented-out), groups the preceding
+    comment preamble + following code up to the next block, extracts the
+    plugin name, mutates spec.plugins with the ordered list of names,
+    and returns a mapping of filename → content lines.
+    """
+    # Strip do/end wrapper and dedent (same as build_section_module does)
+    inner = dedent_block(section_body(section_lines))
+
+    # Step 1: Find all vim.pack.add boundaries with their preceding comment preambles
+    blocks: list[dict] = []  # [{preamble: [...], start: int, name: str}]
+    i = 0
+    while i < len(inner):
+        line = inner[i]
+        # Skip commented-out lines
+        stripped = line.lstrip()
+        if stripped.startswith('--'):
+            i += 1
+            continue
+        # Check for vim.pack.add (not necessarily at line start)
+        if 'vim.pack.add' in line:
+            # Walk backward to collect comment preamble
+            preamble: list[str] = []
+            j = i - 1
+            while j >= 0 and (inner[j].strip() == '' or inner[j].strip().startswith('--')):
+                preamble.insert(0, inner[j])
+                j -= 1
+            name = extract_plugin_name(line)
+            blocks.append({'preamble': preamble, 'start': i, 'name': name})
+        i += 1
+
+    if not blocks:
+        fail("section contains no vim.pack.add blocks")
+
+    # Step 2: Slice lines into blocks (each block = preamble + code up to next preamble)
+    outputs: dict[Path, list[str]] = {}
+    for idx, block in enumerate(blocks):
+        start = block['start']
+        # End is the start of the next block's preamble, or end of inner
+        if idx + 1 < len(blocks):
+            next_preamble_start = blocks[idx + 1]['start'] - len(blocks[idx + 1]['preamble'])
+        else:
+            next_preamble_start = len(inner)
+
+        # Collect lines from preamble start to just before next block's code
+        preamble_start = start - len(block['preamble'])
+        block_lines = inner[preamble_start:next_preamble_start]
+
+        # Strip leading blank lines so the single "" after gh() is the only separator
+        while block_lines and block_lines[0].strip() == '':
+            block_lines.pop(0)
+
+        # Add gh helper and format
+        if spec.uses_gh:
+            content = [*GH_HELPER, "", *block_lines]
+        else:
+            content = list(block_lines)
+
+        # Post-process: merge with extra config file if one exists
+        content = _merge_with_extra(block['name'], content, source_root)
+
+        plugin_path = Path(f"lua/kickstart/plugins/{block['name']}.lua")
+        outputs[plugin_path] = content
+
+    # Step 3: Populate spec.plugins (side effect)
+    spec.plugins = [b['name'] for b in blocks]
+
+    return outputs
+
+
 def build_plugin_loader() -> list[str]:
     lines = ["-- Load plugin modules in order.", ""]
-    lines.extend([f"require '{spec.module}'" for spec in FILE_SPECS[3:]])
+    for spec in FILE_SPECS[3:]:
+        if spec.split:
+            for name in spec.plugins:
+                lines.append(f"require 'kickstart.plugins.{name}'")
+        else:
+            lines.append(f"require '{spec.module}'")
     return lines
 
 
@@ -214,14 +384,14 @@ def build_root_init(prelude: list[str], postlude: list[str]) -> list[str]:
             "require 'pack'",
             "",
             "-- [[ Configure and install plugins ]]",
-            "require 'kickstart.plugins'",
+            "require 'plugins'",
         ]
     )
     root.extend(postlude)
     return root
 
 
-def build_outputs(source_lines: list[str]) -> dict[Path, list[str]]:
+def build_outputs(source_lines: list[str], source_root: Path) -> dict[Path, list[str]]:
     headers = find_section_headers(source_lines)
     section_headers = parse_section_headers(source_lines)
     expected_numbers = ALL_SECTION_NUMBERS
@@ -243,15 +413,31 @@ def build_outputs(source_lines: list[str]) -> dict[Path, list[str]]:
         end = section_end_index(source_lines, next_idx)
         section_lines.append(source_lines[start : end + 1])
 
+    def _header(number: int) -> list[str]:
+        if ARGS.section_headers:
+            return make_header(number, section_headers[number])
+        return []
+
     spec_by_number = {spec.number: spec for spec in FILE_SPECS}
     outputs: dict[Path, list[str]] = {
         Path("init.lua"): build_root_init(prelude, source_lines[section_end_index(source_lines, None) + 1 :]),
-        Path("lua/kickstart/plugins/init.lua"): [*build_plugin_loader(), "", *make_header(10, section_headers[10]), *build_section_module(section_lines[9], False)],
     }
 
+    # Process sections first (populates spec.plugins for split sections)
     for i, number in enumerate(expected_numbers[:9]):
         spec = spec_by_number[number]
-        outputs[spec.path] = [*make_header(number, section_headers[number]), *build_section_module(section_lines[i], spec.uses_gh)]
+        if spec.split:
+            outputs.update(split_section(section_lines[i], spec, source_root))
+        else:
+            outputs[spec.path] = [*_header(number), *build_section_module(section_lines[i], spec.uses_gh)]
+
+    # Generate plugins.lua after split sections are processed
+    outputs[Path("lua/plugins.lua")] = [*build_plugin_loader(), "", *_header(10), *build_section_module(section_lines[9], False)]
+
+    # Append modeline to every output file
+    for lines in outputs.values():
+        if lines and lines[-1] != MODELINE:
+            lines.append(MODELINE)
 
     return outputs
 
@@ -296,22 +482,25 @@ def parse_args() -> CliArgs:
     mode = parser.add_mutually_exclusive_group(required=True)
     _ = mode.add_argument("--write", action="store_true", help="Write the split files to disk")
     _ = mode.add_argument("--check", action="store_true", help="Check the split files without writing")
+    _ = parser.add_argument("--section-headers", action="store_true", help="Include section headers in generated files")
     namespace = parser.parse_args()
     return CliArgs(
         source=cast(str, getattr(namespace, "source", "init.lua")),
         output_root=cast(str, getattr(namespace, "output_root")),
         write=cast(bool, getattr(namespace, "write", False)),
         check=cast(bool, getattr(namespace, "check", False)),
+        section_headers=cast(bool, getattr(namespace, "section_headers", False)),
     )
 
 
 def main() -> int:
-    args = parse_args()
-    source = Path(args.source)
-    output_root = Path(args.output_root)
-    outputs = build_outputs(read_lines(source))
+    global ARGS
+    ARGS = parse_args()
+    source = Path(ARGS.source)
+    output_root = Path(ARGS.output_root)
+    outputs = build_outputs(read_lines(source), source.parent)
 
-    if args.write:
+    if ARGS.write:
         write_outputs(outputs, output_root)
         return 0
 
