@@ -53,6 +53,13 @@ GH_HELPER = [
 ]
 
 
+@dataclass(frozen=True)
+class PluginBlock:
+    preamble: list[str]
+    start: int
+    name: str
+
+
 @dataclass(frozen=False)
 class ModuleSpec:
     number: int
@@ -213,25 +220,32 @@ def extract_plugin_name(line: str) -> str:
         fail(f"could not extract plugin name from: {line}")
     repo = match.group(1)  # e.g. 'folke/todo-comments.nvim'
     name = repo.rsplit('/', 1)[-1]  # strip owner/ → 'todo-comments.nvim'
-    if name.endswith('.nvim'):
-        name = name[:-5]  # strip .nvim suffix
-    return name
+    return name.removesuffix('.nvim')
 
 
-def extract_setup_content(lines: list[str]) -> str | None:
-    """Find 'setup {' in lines and return the inner content up to the matching '^}' line.
+def find_setup_block(lines: list[str]) -> tuple[int, int] | None:
+    """Find a setup { ... } block and return (start_idx, end_idx) inclusive.
 
     Works because stylua keeps nested braces indented, so the closing brace
     of the outermost setup block is always at column 0 after dedenting.
+    Returns None if no setup block is found.
     """
     for i, line in enumerate(lines):
-        if '.setup {' in line or '.setup{' in line:
-            content: list[str] = []
+        if '.setup {' in line:
             for j in range(i + 1, len(lines)):
                 if lines[j] == '}':
-                    return '\n'.join(content)
-                content.append(lines[j])
+                    return (i, j)
+            break  # setup found but no closing brace
     return None
+
+
+def extract_setup_content(lines: list[str]) -> str | None:
+    """Extract the inner content of a setup { ... } block."""
+    block = find_setup_block(lines)
+    if block is None:
+        return None
+    start, end = block
+    return '\n'.join(lines[start + 1:end])
 
 
 def _merge_with_extra(plugin_name: str, content: list[str], source_root: Path) -> list[str]:
@@ -261,26 +275,15 @@ def _merge_with_extra(plugin_name: str, content: list[str], source_root: Path) -
 
 def replace_setup_block(content: list[str], merged_setup: str) -> list[str]:
     """Replace the existing setup { ... } block in content with a merged version."""
-    result: list[str] = []
-    i = 0
-    while i < len(content):
-        line = content[i]
-        if '.setup {' in line or '.setup{' in line:
-            # Found the setup line — replace everything up to and including '^}'
-            result.append(line)
-            i += 1
-            while i < len(content) and content[i] != '}':
-                i += 1
-            # i is now at the '^}' line — skip it (we're replacing the whole block)
-            if i < len(content):
-                i += 1
-            # Insert merged setup content (already properly indented from sources), plus closing brace
-            for ml in merged_setup.split('\n'):
-                result.append(ml)
-            result.append('}')
-        else:
-            result.append(line)
-            i += 1
+    block = find_setup_block(content)
+    if block is None:
+        return content
+    start, end = block
+    result = list(content[:start + 1])  # everything including the setup line
+    for ml in merged_setup.split('\n'):
+        result.append(ml)
+    result.append('}')
+    result.extend(content[end + 1:])  # everything after closing brace
     return result
 
 
@@ -296,26 +299,23 @@ def split_section(section_lines: list[str], spec: ModuleSpec, source_root: Path)
     inner = dedent_block(section_body(section_lines))
 
     # Step 1: Find all vim.pack.add boundaries with their preceding comment preambles
-    blocks: list[dict] = []  # [{preamble: [...], start: int, name: str}]
-    i = 0
-    while i < len(inner):
-        line = inner[i]
+    blocks: list[PluginBlock] = []
+    for i, line in enumerate(inner):
         # Skip commented-out lines
         stripped = line.lstrip()
         if stripped.startswith('--'):
-            i += 1
             continue
         # Check for vim.pack.add (not necessarily at line start)
         if 'vim.pack.add' in line:
             # Walk backward to collect comment preamble
             preamble: list[str] = []
-            j = i - 1
-            while j >= 0 and (inner[j].strip() == '' or inner[j].strip().startswith('--')):
-                preamble.insert(0, inner[j])
-                j -= 1
+            for j in range(i - 1, -1, -1):
+                if inner[j].strip() == '' or inner[j].strip().startswith('--'):
+                    preamble.insert(0, inner[j])
+                else:
+                    break
             name = extract_plugin_name(line)
-            blocks.append({'preamble': preamble, 'start': i, 'name': name})
-        i += 1
+            blocks.append(PluginBlock(preamble=preamble, start=i, name=name))
 
     if not blocks:
         fail("section contains no vim.pack.add blocks")
@@ -323,15 +323,15 @@ def split_section(section_lines: list[str], spec: ModuleSpec, source_root: Path)
     # Step 2: Slice lines into blocks (each block = preamble + code up to next preamble)
     outputs: dict[Path, list[str]] = {}
     for idx, block in enumerate(blocks):
-        start = block['start']
+        start = block.start
         # End is the start of the next block's preamble, or end of inner
         if idx + 1 < len(blocks):
-            next_preamble_start = blocks[idx + 1]['start'] - len(blocks[idx + 1]['preamble'])
+            next_preamble_start = blocks[idx + 1].start - len(blocks[idx + 1].preamble)
         else:
             next_preamble_start = len(inner)
 
         # Collect lines from preamble start to just before next block's code
-        preamble_start = start - len(block['preamble'])
+        preamble_start = start - len(block.preamble)
         block_lines = inner[preamble_start:next_preamble_start]
 
         # Strip leading blank lines so the single "" after gh() is the only separator
@@ -345,13 +345,13 @@ def split_section(section_lines: list[str], spec: ModuleSpec, source_root: Path)
             content = list(block_lines)
 
         # Post-process: merge with extra config file if one exists
-        content = _merge_with_extra(block['name'], content, source_root)
+        content = _merge_with_extra(block.name, content, source_root)
 
-        plugin_path = Path(f"lua/kickstart/plugins/{block['name']}.lua")
+        plugin_path = Path(f"lua/kickstart/plugins/{block.name}.lua")
         outputs[plugin_path] = content
 
     # Step 3: Populate spec.plugins (side effect)
-    spec.plugins = [b['name'] for b in blocks]
+    spec.plugins = [b.name for b in blocks]
 
     return outputs
 
@@ -437,6 +437,7 @@ def build_outputs(source_lines: list[str], source_root: Path) -> dict[Path, list
     # Append modeline to every output file
     for lines in outputs.values():
         if lines and lines[-1] != MODELINE:
+            lines.append("")
             lines.append(MODELINE)
 
     return outputs
