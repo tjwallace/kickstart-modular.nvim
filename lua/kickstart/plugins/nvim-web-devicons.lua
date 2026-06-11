@@ -6,4 +6,5 @@ local function gh(repo) return 'https://github.com/' .. repo end
 -- Here we only install `nvim-web-devicons` (which adds pretty icons) if we have a Nerd Font,
 -- since otherwise the icons won't display properly.
 if vim.g.have_nerd_font then vim.pack.add { gh 'nvim-tree/nvim-web-devicons' } end
+
 -- vim: ts=2 sts=2 sw=2 et

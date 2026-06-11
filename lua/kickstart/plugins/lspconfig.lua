@@ -179,4 +179,5 @@ for name, server in pairs(servers) do
   vim.lsp.config(name, server)
   vim.lsp.enable(name)
 end
+
 -- vim: ts=2 sts=2 sw=2 et
