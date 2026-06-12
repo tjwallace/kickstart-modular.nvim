@@ -1,7 +1,6 @@
 -- Load plugin modules in order.
 
 require 'kickstart.plugins.guess-indent'
-require 'kickstart.plugins.nvim-web-devicons'
 require 'kickstart.plugins.gitsigns'
 require 'kickstart.plugins.which-key'
 require 'kickstart.plugins.tokyonight'
