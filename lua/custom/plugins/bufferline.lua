@@ -1,9 +1,6 @@
-local function gh(repo) return 'https://github.com/' .. repo end
+local gh = require('custom.plugins._utils').gh
 
-vim.pack.add {
-  gh 'akinsho/bufferline.nvim',
-  gh 'nvim-tree/nvim-web-devicons',
-}
+vim.pack.add { gh 'akinsho/bufferline.nvim' }
 
 require('bufferline').setup {
   options = {
