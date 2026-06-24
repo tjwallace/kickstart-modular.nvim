@@ -5,7 +5,30 @@
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
--- Diagnostic keymaps
+-- Diagnostic Config & Keymaps
+--  See `:help vim.diagnostic.Opts`
+vim.diagnostic.config {
+  update_in_insert = false,
+  severity_sort = true,
+  float = { border = 'rounded', source = 'if_many' },
+  underline = { severity = { min = vim.diagnostic.severity.WARN } },
+
+  -- Can switch between these as you prefer
+  virtual_text = true, -- Text shows up at the end of the line
+  virtual_lines = false, -- Text shows up underneath the line, with virtual lines
+
+  -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
+  jump = {
+    on_jump = function(_, bufnr)
+      vim.diagnostic.open_float {
+        bufnr = bufnr,
+        scope = 'cursor',
+        focus = false,
+      }
+    end,
+  },
+}
+
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
@@ -48,19 +71,6 @@ vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current bu
 
 vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' })
 
--- Splits
-vim.keymap.set('n', '<leader>vs', '<C-w><C-v>', { desc = 'Vertical split' })
-vim.keymap.set('n', '<leader>hs', '<C-w><C-s>', { desc = 'Horizontal split' })
-
--- Tabs
-vim.keymap.set('n', '<leader>to', '<cmd>tabnew<CR>', { desc = 'Open new tab' })
-vim.keymap.set('n', '<leader>tx', '<cmd>tabclose<CR>', { desc = 'Close current tab' })
-vim.keymap.set('n', '<leader>tn', '<cmd>tabn<CR>', { desc = 'Go to next tab' })
-vim.keymap.set('n', '<leader>tp', '<cmd>tabp<CR>', { desc = 'Go to previous tab' })
-vim.keymap.set('n', '<leader>tf', '<cmd>tabnew %<CR>', { desc = 'Open current buffer in new tab' })
-
-vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' })
-
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
@@ -76,9 +86,7 @@ vim.keymap.set({ 'n', 'v' }, '<tab>', '%', { desc = 'Jump to matching bracket' }
 vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
-  callback = function()
-    vim.hl.on_yank()
-  end,
+  callback = function() vim.hl.on_yank() end,
 })
 
 if vim.g.neovide then
