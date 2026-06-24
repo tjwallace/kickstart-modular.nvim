@@ -1,10 +1,6 @@
-local function gh(repo) return 'https://github.com/' .. repo end
+local gh = require('custom.plugins._utils').gh
 
-vim.pack.add {
-  gh 'folke/todo-comments.nvim',
-  gh 'nvim-tree/nvim-web-devicons',
-  gh 'folke/trouble.nvim',
-}
+vim.pack.add { gh 'folke/trouble.nvim' }
 
 require('trouble').setup { focus = true }
 

@@ -2,7 +2,7 @@
 --
 -- To enable nvim-surround instead, uncomment the block below:
 --
--- local function gh(repo) return 'https://github.com/' .. repo end
+-- local gh = require('custom.plugins._utils').gh
 --
 -- vim.pack.add { { src = gh 'kylechui/nvim-surround', version = vim.version.range '*' } }
 -- require('nvim-surround').setup()

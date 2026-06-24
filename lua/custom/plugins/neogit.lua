@@ -1,4 +1,4 @@
-local function gh(repo) return 'https://github.com/' .. repo end
+local gh = require('custom.plugins._utils').gh
 
 vim.pack.add {
   gh 'nvim-lua/plenary.nvim',
