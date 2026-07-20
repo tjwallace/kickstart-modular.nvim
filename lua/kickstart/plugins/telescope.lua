@@ -36,15 +36,23 @@ if vim.fn.executable 'make' == 1 then table.insert(telescope_plugins, gh 'nvim-t
 vim.pack.add(telescope_plugins)
 
 -- See `:help telescope` and `:help telescope.setup()`
+local actions = require 'telescope.actions'
 require('telescope').setup {
   -- You can put your default mappings / updates / etc. in here
   --  All the info you're looking for is in `:help telescope.setup()`
-  --
-  -- defaults = {
-  --   mappings = {
-  --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-  --   },
-  -- },
+  defaults = {
+    mappings = {
+      -- Scroll through results with Ctrl+j/k (in addition to Ctrl+n/p)
+      i = {
+        ['<C-j>'] = actions.move_selection_next,
+        ['<C-k>'] = actions.move_selection_previous,
+      },
+      n = {
+        ['<C-j>'] = actions.move_selection_next,
+        ['<C-k>'] = actions.move_selection_previous,
+      },
+    },
+  },
   -- pickers = {}
   extensions = {
     ['ui-select'] = { require('telescope.themes').get_dropdown() },
